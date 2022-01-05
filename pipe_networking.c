@@ -13,9 +13,16 @@
   returns the file descriptor for the upstream pipe.
   =========================*/
 int server_setup() {
-  mkfifo(WKP, 0644);
-  int from_client = open(WKP, O_RDONLY, 0);
-  remove(WKP);
+  struct addrinfo *hints, *results;
+  hints = calloc(1, sizeof(struct addrinfo));
+  hints->ai_family = AF_INET;
+  hints->ai_socktype = SOCK_STREAM;
+  hints->ai_flags = AI_PASSIVE;
+  getaddrinfo(NULL, 9845, hints, &results);
+  int from_client = socket(results->ai_family, results->ai_socktype, results->ai_protocol);
+  bind(from_client, results->ai_addr, results->ai_addrlen);
+  free(hints);
+  free(results);
   return from_client;
 }
 
