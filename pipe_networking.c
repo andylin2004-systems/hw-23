@@ -10,6 +10,8 @@
 
   removes the WKP once a connection has been made
 
+  handles the server portion of 3 way handshake
+
   returns the file descriptor for the upstream pipe.
   =========================*/
 int server_setup() {
@@ -68,5 +70,8 @@ int client_handshake(int *to_server) {
   int sd = socket(results->ai_family, results->ai_socktype, results->ai_protocol);
   connect(sd, results->ai_addr, results->ai_addrlen);
 
+  free(hints);
+  freeaddrinfo(results);
+  
   return sd;
 }
