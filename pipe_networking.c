@@ -18,12 +18,14 @@ int server_setup() {
   hints->ai_family = AF_INET;
   hints->ai_socktype = SOCK_STREAM;
   hints->ai_flags = AI_PASSIVE;
-  getaddrinfo(NULL, 9845, hints, &results);
-  int from_client = socket(results->ai_family, results->ai_socktype, results->ai_protocol);
-  bind(from_client, results->ai_addr, results->ai_addrlen);
+  getaddrinfo(NULL, "9846", hints, &results);
+  int sd = socket(results->ai_family, results->ai_socktype, results->ai_protocol);
+  bind(sd, results->ai_addr, results->ai_addrlen);
+  listen(sd, 10);
   free(hints);
-  free(results);
-  return from_client;
+  freeaddrinfo(results);
+
+  return sd;
 }
 
 /*=========================
@@ -34,71 +36,15 @@ int server_setup() {
 
   returns the file descriptor for the downstream pipe.
   =========================*/
-int server_connect(int from_client) {
-  char buffer[HANDSHAKE_BUFFER_SIZE] = {0};
-  read(from_client, buffer, sizeof(buffer));
-  printf("[server] handshake received: -%s-\n", buffer);
+int server_connect(int sd) {
+  int to_client;
+  socklen_t sock_size;
+  struct sockaddr_storage client_address;
+  sock_size = sizeof(client_address);
 
-  int to_client = open(buffer, O_WRONLY, 0);
-  srand(time(NULL));
-  int r = rand() % HANDSHAKE_BUFFER_SIZE;
-  sprintf(buffer, "%d", r);
+  to_client = accept(sd, (struct sockaddr *)&client_address, &sock_size);
 
-  write(to_client, buffer, sizeof(buffer));
-  read(from_client, buffer, sizeof(buffer));
-  printf("[server] handshake received: -%s-\n", buffer);
-  
   return to_client;
-}
-
-
-/*=========================
-  server_handshake
-  args: int * to_client
-
-  Performs the server side pipe 3 way handshake.
-  Sets *to_client to the file descriptor to the downstream pipe.
-
-  returns the file descriptor for the upstream pipe.
-  =========================*/
-int server_handshake(int *to_client) {
-  int b, from_client;
-  char buffer[HANDSHAKE_BUFFER_SIZE];
-
-  printf("[server] handshake: making wkp\n");
-  b = mkfifo(WKP, 0600);
-  if ( b == -1 ) {
-    printf("mkfifo error %d: %s\n", errno, strerror(errno));
-    exit(-1);
-  }
-  //open & block
-  from_client = open(WKP, O_RDONLY, 0);
-  //remove WKP
-  remove(WKP);
-
-  printf("[server] handshake: removed wkp\n");
-  //read initial message
-  b = read(from_client, buffer, sizeof(buffer));
-  printf("[server] handshake received: -%s-\n", buffer);
-
-
-  *to_client = open(buffer, O_WRONLY, 0);
-  //create SYN_ACK message
-  srand(time(NULL));
-  int r = rand() % HANDSHAKE_BUFFER_SIZE;
-  sprintf(buffer, "%d", r);
-
-  write(*to_client, buffer, sizeof(buffer));
-  //rad and check ACK
-  read(from_client, buffer, sizeof(buffer));
-  int ra = atoi(buffer);
-  if (ra != r+1) {
-    printf("[server] handshake received bad ACK: -%s-\n", buffer);
-    exit(0);
-  }//bad response
-  printf("[server] handshake received: -%s-\n", buffer);
-
-  return from_client;
 }
 
 
@@ -113,39 +59,14 @@ int server_handshake(int *to_client) {
   =========================*/
 int client_handshake(int *to_server) {
 
-  int from_server;
-  char buffer[HANDSHAKE_BUFFER_SIZE];
-  char ppname[HANDSHAKE_BUFFER_SIZE];
+  struct addrinfo *hints, *results;
+  hints = calloc(1, sizeof(struct addrinfo));
+  hints->ai_family = AF_INET;
+  hints->ai_socktype = SOCK_STREAM;
+  getaddrinfo("127.0.0.1", "9846", hints, &results);
 
-  //make private pipe
-  printf("[client] handshake: making pp\n");
-  sprintf(ppname, "%d", getpid() );
-  mkfifo(ppname, 0600);
+  int sd = socket(results->ai_family, results->ai_socktype, results->ai_protocol);
+  connect(sd, results->ai_addr, results->ai_addrlen);
 
-  //send pp name to server
-  printf("[client] handshake: connecting to wkp\n");
-  *to_server = open( WKP, O_WRONLY, 0);
-  if ( *to_server == -1 ) {
-    printf("open error %d: %s\n", errno, strerror(errno));
-    exit(1);
-  }
-
-  write(*to_server, ppname, sizeof(buffer));
-  //open and wait for connection
-  from_server = open(ppname, O_RDONLY, 0);
-
-  read(from_server, buffer, sizeof(buffer));
-  /*validate buffer code goes here */
-  printf("[client] handshake: received -%s-\n", buffer);
-
-  //remove pp
-  remove(ppname);
-  printf("[client] handshake: removed pp\n");
-
-  //send ACK to server
-  int r = atoi(buffer) + 1;
-  sprintf(buffer, "%d", r);
-  write(*to_server, buffer, sizeof(buffer));
-
-  return from_server;
+  return sd;
 }

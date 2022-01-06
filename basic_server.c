@@ -4,17 +4,22 @@
 int main() {
 
   int to_client;
-  int from_client;
+  int sd;
 
-  while(1){
-    from_client = server_setup();
-    if (fork() == 0)
+    sd = server_setup();
+
+    printf("dng");
+
+    while (1)
     {
-      to_client = server_connect(from_client);
-      
+      to_client = server_connect(sd);
+
+      if (fork() == 0)
+      {
+
       while(1){
         char input[BUFFER_SIZE] = {0};
-        read(from_client, input, sizeof(input));
+        read(to_client, input, sizeof(input));
         int i;
         for (i = 0; i < BUFFER_SIZE && input[i]; i++)
         {
